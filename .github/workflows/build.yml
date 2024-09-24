@@ -1,0 +1,64 @@
+name: Build and Deploy Node.js Project
+
+on:
+  push:
+    branches:
+      - release
+  pull_request:
+    branches:
+      - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [8.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies using Yarn
+        run: yarn install
+
+      - name: Run build script
+        run: yarn build
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Checkout the build branch
+        run: |
+          git config --local user.name "GitHub Actions"
+          git config --local user.email "actions@github.com"
+          git fetch origin
+          if git show-ref --quiet refs/heads/build; then
+            git checkout build
+          else
+            git checkout --orphan build
+          fi
+
+      - name: Copy build artifacts
+        run: |
+          find . -mindepth 1 -maxdepth 1 ! -name 'dist' ! -name '.git' -exec rm -rf {} +
+          cp -r ./dist/* .
+          rm -rf ./dist
+
+      - name: Commit and push build artifacts to the build branch
+        run: |
+          git add .
+          git commit -m "Update build artifacts"
+          git push origin build --force
+        working-directory: ${{ github.workspace }}
